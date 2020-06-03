@@ -1,0 +1,26 @@
+language: ruby
+rvm:
+- 2.7.1
+cache: bundler
+services:
+- postgresql
+- docker
+before_script:
+- bundle exec rake db:create
+- bundle exec rake db:migrate
+- bundle exec rake db:seed
+script:
+- bundle install
+env:
+  global:
+  - COMMIT=${TRAVIS_COMMIT::8}
+  - secure: dOmGY3uUfVioM8NITx+0uGJ2BOMUrq1/+eifOR7IuJypSgvvlJGZBKjCTTJvsXBilmXkKujtVcMBk/KsyLUjhALJYXbjaSrR+JXbrCYp4NYQNXmr7LK/PgrZXw066r+OwqBDGt/nWJgiyJ6dO8gjpKHOvudowiSJ96DTS8/aFiVUTg1PGptzwr4JI5ZIait+lGuAOTowR0dVji2Vxqt6SvUZgAt+EASfcs0gmXZ5y4umcLbniflPIIeU09wZe+QXQn9F5cy1JrKZR2tPBrFMAE0vhAUwDfMXd8eFX/3YzSDVLs+bBSwUj21hqq79C4xbknygUH8pAoQRRx2ItsVTDvrrm+tiHBgJvoftKODcYQaCpDhRpg6SJ38SUeKkuvQaVmff0MhEzbxbb4Y9JtFCyYzGX1SRXSzBK+q2h3gmL2t8vKfN49KgSe9tFqxa5+LdftTIL8LEhSWB4N7is4EvSU92MtbZer3LWn/T941chNFrfohyAulqd+iUntdwffXJEV4ZMEC2NR9fn0vg1Zz+t14ifT9gfiEW7n/GRO243MKUmx+52TrjozUfh3msgqOh75q9c5nbnAjuEIQbBB5liFAj/KghRcQl6NPJ2IR+Q9Gz1klHKGa21Qy4skwvubDDU/kTS6zw0lHQ9JGoym5auHZcMOvq1wHsfQx2iPl2b1w=
+  - secure: i5SXuucJpSF6nES4uUVJ6DCBhBf8HXDcziWIo4G0N4xkG4U8EtaZcnW54T1UQA2+sH4x+edF+52RUNS/KZb2jCypH+hkd/SDQgcj5wZnnc7qbTgcNejNTJ66tAjqohrPfkK1iYRnnkWo6NHFF4T/V3LXuxr8+ZJrPcI2vmPkXnJGqUYm+s8w76JUMkmBVIU40BbrqE2YSfyrJznW5zzU63ahZSCxDA74gbzo6Qxxq3AJBkHthWwaVZG5gZo/9tALe4Foz2Uq/KTPywtfLTbKqGHTEM2Fd7FnIw18C/DaDoctlj1y1ObAfihN+8THyeqaJfsdh/3SwB+NEBKiXPBRYaO9KfRmpWbRGc+7fLzYyWWQwosdC7jPqfu0rvjlJ3j+cl7IPpJUwbttW8fEdRZ8IMxX4yLuu1ba5VOocHUptttHLnDUld0SmAjAeF0Jq5uWsHPLQFhQsmHTFjq6OdEAHqVTtLa/rKNKtp8ZnXCPRF5YKbQpbMKNXCQy5HaKRnkbXSizfZ/YfsM45Uspbxcf+pab4i0RfGr0H+3PcHaN9lFmzNUpEIRHSZqYX2tUvPKrAvrQ1ulm5P060pOaxFByUIwLx5hdVYcGok74nsz7WVCS2l/Bwhir3ozZNZtImTKjP86UOhBnHEm53QpFJ3O3AYmzCv/kp/eQ9hAzZ7ldDaI=
+after_success:
+- docker login -u $DOCKER_USER -p $DOCKER_PASS docker.io
+- export REPO=iammariam/bbb_lti_broker
+- export TAG=latest
+- docker-compose build -t $REPO:$COMMIT .
+- docker tag $REPO:$COMMIT $REPO:$TAG
+- docker tag $REPO:$COMMIT $REPO:travis-$TRAVIS_BUILD_NUMBER
+- docker push $REPO

@@ -1,29 +1,30 @@
-FROM ruby:2.7.0-alpine
+FROM ruby:2.7.1
 
-USER root
+#USER root
 
-RUN apk update \
-&& apk upgrade \
-&& apk add --update --no-cache \
-build-base curl-dev git postgresql-dev \
-yaml-dev zlib-dev nodejs yarn
+RUN curl https://deb.nodesource.com/setup_12.x | bash
+RUN curl https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
+RUN echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
+RUN apt-get update -qq && apt-get install -y nodejs postgresql-client yarn
 
-ARG RAILS_ENV
-ENV RAILS_ENV=${RAILS_ENV:-production}
+RUN mkdir /bbb-lti-broker
+WORKDIR /bbb-lti-broker
 
-ENV APP_HOME /usr/src/app
-RUN mkdir -p $APP_HOME
-COPY . $APP_HOME
-WORKDIR $APP_HOME
+# Setting env up
+ENV RAILS_ENV='production'
+ENV RACK_ENV='production'
 
-ENV BUNDLER_VERSION='2.1.4'
-RUN gem install bundler --no-document -v '2.1.4'
-RUN bundle config set without 'development test doc'
+COPY Gemfile Gemfile
+COPY Gemfile.lock Gemfile.lock
 RUN bundle install
+RUN yarn install --check-files
+COPY . /bbb-lti-broker
+# RUN rake db:create db:migrate db:seed
 
-RUN bundle update --bundler 2.1.4
-RUN gem update --system
-
+# Add a script to be executed every time the container starts.
+COPY entrypoint.sh /usr/bin/
+RUN chmod +x /usr/bin/entrypoint.sh
+ENTRYPOINT ["entrypoint.sh"]
 EXPOSE 3000
 
 # Precompile assets
