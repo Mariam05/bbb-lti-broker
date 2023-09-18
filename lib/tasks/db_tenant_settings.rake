@@ -82,6 +82,105 @@ namespace :db do
         puts(e.backtrace)
         exit(1)
       end
+
+      desc 'Add BBB credentials'
+      task :add_bbb_credentials, [:uid, :bigbluebutton_url, :bigbluebutton_secret] => :environment do |_t, args|
+        tenant_id = args[:uid] || ''
+        bigbluebutton_url = args[:bigbluebutton_url]
+        bigbluebutton_secret = args[:bigbluebutton_secret]
+
+        if bigbluebutton_url.blank? || bigbluebutton_secret.blank?
+          puts('Error: Both bigbluebutton url and secret are required')
+          exit(1)
+        end
+
+        tenant = RailsLti2Provider::Tenant.find_by(uid: tenant_id)
+
+        if tenant.nil?
+          puts("Tenant '#{tenant_id}' does not exist.")
+          exit(1)
+        end
+
+        tenant.settings['bigbluebutton_url'] = bigbluebutton_url
+        tenant.settings['bigbluebutton_secret'] = bigbluebutton_secret
+        tenant.save!
+
+        puts("Added the following BBB credentials to tenant #{tenant_id}:")
+        puts("bigbluebutton_url = #{bigbluebutton_url}")
+        puts("bigbluebutton_secret = #{bigbluebutton_secret}")
+      rescue StandardError => e
+        puts(e.backtrace)
+        exit(1)
+      end
+
+      desc 'Add params to forward to BBB'
+      task :forward_param, [:uid, :param] => :environment do |_t, args|
+        tenant_id = args[:uid] || ''
+        param = args[:param]
+
+        if param.blank?
+          puts('Please specify a parameter')
+          exit(1)
+        end
+
+        tenant = RailsLti2Provider::Tenant.find_by(uid: tenant_id)
+
+        if tenant.nil?
+          puts("Tenant '#{tenant_id}' does not exist.")
+          exit(1)
+        end
+
+        forward_params_key = 'forward_params'
+
+        if tenant.settings.key?(forward_params_key)
+          tenant.settings[forward_params_key] << param unless tenant.settings[forward_params_key].include?(param)
+        else
+          tenant.settings[forward_params_key] = [param]
+        end
+
+        tenant.save!
+
+        puts("Params to be forwarded for tenant #{tenant_id}:")
+        puts(tenant.settings[forward_params_key])
+      rescue StandardError => e
+        puts(e.backtrace)
+        exit(1)
+      end
+
+      desc 'Delete forward param'
+      task :delete_forward_param, [:uid, :param] => :environment do |_t, args|
+        tenant_id = args[:uid] || ''
+        param = args[:param]
+
+        if param.blank?
+          puts('Please specify a parameter')
+          exit(1)
+        end
+
+        tenant = RailsLti2Provider::Tenant.find_by(uid: tenant_id)
+
+        if tenant.nil?
+          puts("Tenant '#{tenant_id}' does not exist.")
+          exit(1)
+        end
+
+        forward_params_key = 'forward_params'
+
+        if tenant.settings.key?(forward_params_key) || tenant.settings.key?(forward_params_key).include?(param)
+          puts("Param does not exist for tenant #{tenant_id}")
+          exit(1)
+        else
+          tenant.settings[forward_params_key].delete(param)
+        end
+
+        tenant.save!
+
+        puts("Successfully deleted param #{param} for tenant #{tenant_id}:")
+        puts(tenant.settings[forward_params_key])
+      rescue StandardError => e
+        puts(e.backtrace)
+        exit(1)
+      end
     end
   end
 end
