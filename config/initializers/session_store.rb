@@ -20,7 +20,7 @@
 
 attrs = {
   key: '_bbb_lti_broker_session',
-  secure: ENV['COOKIES_SECURE_OFF'].blank?,
+  secure: Rails.env.production?,
   same_site: ENV['COOKIES_SAME_SITE'].presence || 'None',
 }
 
