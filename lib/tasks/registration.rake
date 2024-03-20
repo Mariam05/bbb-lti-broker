@@ -19,6 +19,7 @@ namespace :registration do
     end
     abort('The Issuer must be valid.') if issuer.blank?
 
+    puts("tenant is: #{args[:tenant_uid]}")
     # Validate the tenant as it is a point of failure and if not valid, there is no point on continuing.
     tenant = RailsLti2Provider::Tenant.find_by(uid: args[:tenant_uid]) if args[:tenant_uid].present?
     tenant = RailsLti2Provider::Tenant.first if tenant.nil?
@@ -64,17 +65,11 @@ namespace :registration do
     jwk['use'] = 'sig' unless jwk.key?('use')
     jwk = jwk.to_json
 
-    key_dir = Digest::MD5.hexdigest(issuer + client_id)
-    Dir.mkdir('.ssh/') unless Dir.exist?('.ssh/')
-    Dir.mkdir(".ssh/#{key_dir}") unless Dir.exist?(".ssh/#{key_dir}")
-
-    File.open(Rails.root.join(".ssh/#{key_dir}/priv_key"), 'w') do |f|
-      f.puts(private_key.to_s)
-    end
-
-    File.open(Rails.root.join(".ssh/#{key_dir}/pub_key"), 'w') do |f|
-      f.puts(public_key.to_s)
-    end
+    rsa_key_pair = RsaKeyPair.create(
+      private_key: private_key.to_s,
+      public_key: public_key.to_s,
+      tool_id: issuer
+    )
 
     reg = {
       issuer: issuer,
@@ -82,7 +77,7 @@ namespace :registration do
       key_set_url: key_set_url,
       auth_token_url: auth_token_url,
       auth_login_url: auth_login_url,
-      tool_private_key: Rails.root.join(".ssh/#{key_dir}/priv_key"),
+      rsa_key_pair_id: rsa_key_pair.id,
     }
 
     tool = RailsLti2Provider::Tool.create(
@@ -109,7 +104,7 @@ namespace :registration do
   namespace :show do
     desc 'Show a registration by [key,value]'
     task :by, [:key, :value] => :environment do |_t, args|
-      $stdout.puts('registration:destroy:by[key,value]')
+      $stdout.puts('registration:show:by[key,value]')
 
       # Key.
       key = args[:key]
@@ -130,18 +125,18 @@ namespace :registration do
       registration = RailsLti2Provider::Tool.find_by(lti_version: '1.3.0', key.to_sym => value)
       abort("The registration with #{key} = #{value} does not exist") if registration.blank?
 
-      key_dir = Pathname.new(JSON.parse(registration.tool_settings)['tool_private_key']).parent.to_s
-      private_key = File.read("#{key_dir}/priv_key")
-      public_key = File.read("#{key_dir}/pub_key")
+      if (key_pair_id = JSON.parse(registration.tool_settings)['rsa_key_pair_id'])
+        keys = RsaKeyPair.find(key_pair_id)
+      end
 
       output = "{'id': '#{registration.id}', 'uuid': '#{registration.uuid}', 'shared_secret': '#{registration.shared_secret}'}"
       output += " for tenant '#{registration.tenant.uid}'" unless registration.tenant.uid.empty?
       output += " is #{registration.status}"
       puts(output)
       $stdout.puts("\n")
-      $stdout.puts("Private Key:\n#{private_key}")
+      $stdout.puts("Private Key:\n#{keys.private_key}")
       $stdout.puts("\n")
-      $stdout.puts("Public Key:\n#{public_key}")
+      $stdout.puts("Public Key:\n#{keys.public_key}")
       $stdout.puts("\n")
     rescue StandardError => e
       puts(e.backtrace)
@@ -180,18 +175,18 @@ namespace :registration do
     registration = RailsLti2Provider::Tool.find_by(lti_version: '1.3.0', id: id)
     abort("The registration with ID #{id} does not exist") if registration.blank?
 
-    key_dir = Pathname.new(JSON.parse(registration.tool_settings)['tool_private_key']).parent.to_s
-    private_key = File.read("#{key_dir}/priv_key")
-    public_key = File.read("#{key_dir}/pub_key")
+    if (key_pair_id = JSON.parse(registration.tool_settings)['rsa_key_pair_id'])
+      keys = RsaKeyPair.find(key_pair_id)
+    end
 
     output = "{'id': '#{registration.id}', 'uuid': '#{registration.uuid}', 'shared_secret': '#{registration.shared_secret}'}"
     output += " for tenant '#{registration.tenant.uid}'" unless registration.tenant.uid.empty?
     output += " is #{registration.status}"
     puts(output)
     $stdout.puts("\n")
-    $stdout.puts("Private Key:\n#{private_key}")
+    $stdout.puts("Private Key:\n#{keys.private_key}")
     $stdout.puts("\n")
-    $stdout.puts("Public Key:\n#{public_key}")
+    $stdout.puts("Public Key:\n#{keys.public_key}")
     $stdout.puts("\n")
   rescue StandardError => e
     puts(e.backtrace)
@@ -260,34 +255,16 @@ namespace :registration do
 
     private_key = OpenSSL::PKey::RSA.generate(4096)
     public_key = private_key.public_key
-    jwk = JWT::JWK.new(private_key).export
-    jwk['alg'] = 'RS256' unless jwk.key?('alg')
-    jwk['use'] = 'sig' unless jwk.key?('use')
-    jwk = jwk.to_json
 
-    key_dir = Digest::MD5.hexdigest(issuer + client_id)
-    Dir.mkdir('.ssh/') unless Dir.exist?('.ssh/')
-    Dir.mkdir(".ssh/#{key_dir}") unless Dir.exist?(".ssh/#{key_dir}")
+    key_pair_id = JSON.parse(registration.tool_settings)['rsa_key_pair_id']
+    old_keys_obj = RsaKeyPair.find(key_pair_id)
 
-    # File.open(File.join(Rails.root, '.ssh', key_dir, 'priv_key'), 'w') do |f|
-    #   f.puts(private_key.to_s)
-    # end
-    File.open(Rails.root.join(".ssh/#{key_dir}/priv_key"), 'w') do |f|
-      f.puts(private_key.to_s)
-    end
-
-    # File.open(File.join(Rails.root, '.ssh', key_dir, 'pub_key'), 'w') do |f|
-    #   f.puts(public_key.to_s)
-    # end
-    File.open(Rails.root.join(".ssh/#{key_dir}/pub_key"), 'w') do |f|
-      f.puts(public_key.to_s)
-    end
+    old_keys_obj.update({ private_key: private_key, public_key: public_key })
 
     tool_settings = JSON.parse(registration.tool_settings)
     tool_settings['tool_private_key'] = Rails.root.join(".ssh/#{key_dir}/priv_key") # "#{Rails.root}/.ssh/#{key_dir}/priv_key"
     registration.update(tool_settings: tool_settings.to_json, shared_secret: client_id)
 
-    puts(jwk) if args[:type] == 'jwk'
     puts(public_key) if args[:type] == 'key'
   end
 
