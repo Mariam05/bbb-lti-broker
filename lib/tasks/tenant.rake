@@ -188,6 +188,112 @@ namespace :tenant do
       puts(e.backtrace)
       exit(1)
     end
+
+    namespace :room_defaults do
+      room_defaults_key = 'room_settings_default'
+
+      desc 'Add or update a room default value. Value must be 0/1'
+      task :upsert, [:uid, :key, :value] => :environment do |_t, args|
+        uid = args[:uid] || ''
+        key = args[:key]
+        value = args[:value]
+
+        tenant = TaskHelpers.tenant_by('uid', uid)
+        exit(1) if tenant.nil?
+        exit(1) && $stdout.puts('You must specify a key') if key.nil?
+        exit(1) && $stdout.puts('They value must be either a 0 (=false) or 1 (=true)') unless value && %w[0 1].include?(value)
+
+        tenant.settings[room_defaults_key] ||= {}
+        tenant.settings[room_defaults_key][key] = value
+        tenant.save!
+
+        puts("The default for room setting '#{key}' is now #{ActiveModel::Type::Boolean.new.cast(value)} for tenant #{uid}")
+      rescue StandardError => e
+        puts(e.backtrace)
+        exit(1)
+      end
+
+      desc 'Remove a room default setting'
+      task :destroy, [:uid, :key] => :environment do |_t, args|
+        uid = args[:uid] || ''
+        key = args[:key]
+
+        $stdout.puts('A key to delete must be specified') && exit(1) if key.nil?
+        tenant = TaskHelpers.tenant_by('uid', uid)
+        exit(1) if tenant.nil?
+
+        tenant.settings[room_defaults_key].delete(key)
+        puts("The custom default value for the #{key} setting was successfully deleted.")
+      rescue StandardError => e
+        puts(e.backtrace)
+        exit(1)
+      end
+
+      desc 'Show all room defaults for a tenant'
+      task :show, [:uid] => :environment do |_t, args|
+      end
+    end
+
+    namespace :ext_params do
+      ext_params_key = 'ext_params'
+
+      desc 'Add an extra parameter to be passed to BBB on join or create'
+      task :upsert, [:uid, :action, :source, :target] => :environment do |_t, args|
+        # the key is the name of the param coming from the LMS, the value is the name of the param to be sent to BBB
+        uid = args[:uid] || ''
+        action = args[:action].downcase
+        key = args[:source]
+        value = args[:target]
+
+        unless key.present? && value.present?
+          puts('Error: you must specify a key and value for the extra parameter')
+          exit(1)
+        end
+
+        tenant = RailsLti2Provider::Tenant.find_by(uid: uid)
+        if tenant.nil?
+          puts("Tenant '#{uid}' does not exist.")
+          exit(1)
+        end
+
+        tenant.settings[ext_params_key] ||= {}
+        tenant.settings[ext_params_key][action] ||= {}
+        tenant.settings[ext_params_key][action][key] = value
+        tenant.save!
+
+        puts("The extra parameter #{key}=#{value} was added to tenant #{uid}")
+      rescue StandardError => e
+        puts(e.backtrace)
+        exit(1)
+      end
+
+      desc 'Delete an extra parameter mapping'
+      task :destroy, [:uid, :action, :source] => :environment do |_t, args|
+        uid = args[:uid] || ''
+        action = args[:action].downcase
+        key = args[:source]
+
+        if key.blank?
+          puts('Error: you must specify the key you want to be deleted')
+          exit(1)
+        end
+
+        tenant = RailsLti2Provider::Tenant.find_by(uid: uid)
+        if tenant.nil?
+          puts("Tenant '#{uid}' does not exist.")
+          exit(1)
+        end
+
+        tenant.settings[ext_params_key][action].delete(key)
+        tenant.settings[ext_params_key].delete(action) if tenant.settings[ext_params_key][action].empty?
+        tenant.save!
+
+        puts("Successfully deleted extra parameter #{key} for tenant #{uid}")
+      rescue StandardError => e
+        puts(e.backtrace)
+        exit(1)
+      end
+    end
   end
 
   desc 'Tenant Settings task'
@@ -331,67 +437,6 @@ namespace :tenant do
   desc 'Show activation_code for a tenant'
   task :activation_code, [:uid] => :environment do |_t, args|
     Rake::Task['tenant:activation_code:show'].invoke(args[:uid])
-  end
-
-  namespace :ext_params do
-    ext_params_key = 'ext_params'
-
-    desc 'Add an extra parameter to be passed to BBB on join or create'
-    task :upsert, [:uid, :action, :source, :target] => :environment do |_t, args|
-      # the key is the name of the param coming from the LMS, the value is the name of the param to be sent to BBB
-      uid = args[:uid] || ''
-      action = args[:action].downcase
-      key = args[:source]
-      value = args[:target]
-
-      unless key.present? && value.present?
-        puts('Error: you must specify a key and value for the extra parameter')
-        exit(1)
-      end
-
-      tenant = RailsLti2Provider::Tenant.find_by(uid: uid)
-      if tenant.nil?
-        puts("Tenant '#{uid}' does not exist.")
-        exit(1)
-      end
-
-      tenant.settings[ext_params_key] ||= {}
-      tenant.settings[ext_params_key][action] ||= {}
-      tenant.settings[ext_params_key][action][key] = value
-      tenant.save!
-
-      puts("The extra parameter #{key}=#{value} was added to tenant #{uid}")
-    rescue StandardError => e
-      puts(e.backtrace)
-      exit(1)
-    end
-
-    desc 'Delete an extra parameter mapping'
-    task :destroy, [:uid, :action, :source] => :environment do |_t, args|
-      uid = args[:uid] || ''
-      action = args[:action].downcase
-      key = args[:source]
-
-      if key.blank?
-        puts('Error: you must specify the key you want to be deleted')
-        exit(1)
-      end
-
-      tenant = RailsLti2Provider::Tenant.find_by(uid: uid)
-      if tenant.nil?
-        puts("Tenant '#{uid}' does not exist.")
-        exit(1)
-      end
-
-      tenant.settings[ext_params_key][action].delete(key)
-      tenant.settings[ext_params_key].delete(action) if tenant.settings[ext_params_key][action].empty?
-      tenant.save!
-
-      puts("Successfully deleted extra parameter #{key} for tenant #{uid}")
-    rescue StandardError => e
-      puts(e.backtrace)
-      exit(1)
-    end
   end
 end
 
